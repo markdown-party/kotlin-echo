@@ -1,14 +1,22 @@
-@file:OptIn(InternalCoroutinesApi::class)
+@file:OptIn(
+    InternalCoroutinesApi::class,
+    EchoSyncPreview::class,
+)
 @file:Suppress("SameParameterValue")
 
 package io.github.alexandrepiveteau.echo.protocol.fsm
 
 import io.github.alexandrepiveteau.echo.EchoEventLogPreview
+import io.github.alexandrepiveteau.echo.EchoSyncPreview
 import io.github.alexandrepiveteau.echo.causal.SequenceNumber
 import io.github.alexandrepiveteau.echo.causal.SiteIdentifier
 import io.github.alexandrepiveteau.echo.logs.ImmutableEventLog
 import io.github.alexandrepiveteau.echo.protocol.Message.Incoming as Inc
 import io.github.alexandrepiveteau.echo.protocol.Message.Outgoing as Out
+import io.github.alexandrepiveteau.echo.sync.SyncStrategy
+import kotlinx.collections.immutable.PersistentList
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.plus
 import kotlinx.coroutines.InternalCoroutinesApi
 import kotlinx.coroutines.channels.receiveOrNull
 import kotlinx.coroutines.selects.select
@@ -26,7 +34,10 @@ internal sealed class OutgoingState<T, C> : State<Inc<T>, Out<T>, T, C, Outgoing
   companion object {
 
     /** Creates a new [OutgoingState] that's the beginning of the FSM. */
-    operator fun <T, C> invoke(): OutgoingState<T, C> = OutgoingAdvertising(mutableListOf())
+    operator fun <T, C> invoke(
+        // TODO : Use the SyncStrategy
+        strategy: SyncStrategy,
+    ): OutgoingState<T, C> = OutgoingAdvertising(persistentListOf())
   }
 }
 
@@ -42,24 +53,25 @@ private fun notReachable(name: String? = null): Throwable {
 // FINITE STATE MACHINE
 
 private data class OutgoingAdvertising<T, C>(
-    private val available: MutableList<SiteIdentifier>,
+    private val available: PersistentList<SiteIdentifier>,
 ) : OutgoingState<T, C>() {
 
-  @OptIn(InternalCoroutinesApi::class)
   override suspend fun OutgoingStepScope<T, C>.step(
       log: ImmutableEventLog<T, C>,
   ): Effect<OutgoingState<T, C>> =
       when (val msg = receiveOrNull()) {
         is Inc.Advertisement -> {
-          available += msg.site
-          Effect.Move(this@OutgoingAdvertising) // mutable state update.
+          Effect.Move(
+              copy(
+                  available = available.plus(msg.site),
+              ))
         }
         is Inc.Ready -> {
           Effect.Move(
               OutgoingListening(
                   pendingAcks = available,
-                  pendingRequested = mutableListOf(),
-                  requested = mutableListOf(),
+                  pendingRequested = persistentListOf(),
+                  requested = persistentListOf(),
               ))
         }
         null -> Effect.Terminate
@@ -71,9 +83,9 @@ private data class OutgoingAdvertising<T, C>(
 // TODO : Add more sophisticated precondition checks in protocol.
 @OptIn(EchoEventLogPreview::class)
 private data class OutgoingListening<T, C>(
-    private val pendingAcks: MutableList<SiteIdentifier>,
-    private val pendingRequested: MutableList<SiteIdentifier>,
-    private val requested: MutableList<SiteIdentifier>,
+    private val pendingAcks: PersistentList<SiteIdentifier>,
+    private val pendingRequested: PersistentList<SiteIdentifier>,
+    private val requested: PersistentList<SiteIdentifier>,
 ) : OutgoingState<T, C>() {
 
   override suspend fun OutgoingStepScope<T, C>.step(
@@ -91,9 +103,11 @@ private data class OutgoingListening<T, C>(
                 site = acknowledge,
                 nextSeqno = expected,
             )) {
-          pendingAcks.removeLast()
-          pendingRequested.add(acknowledge)
-          Effect.Move(this@OutgoingListening) // mutable state update.
+          Effect.Move(
+              copy(
+                  pendingAcks = pendingAcks.removeAt(pendingAcks.lastIndex),
+                  pendingRequested = pendingRequested.add(acknowledge),
+              ))
         }
       }
 
@@ -103,9 +117,11 @@ private data class OutgoingListening<T, C>(
                 site = request,
                 count = UInt.MAX_VALUE,
             )) {
-            pendingRequested.removeLast()
-            requested.add(request)
-            Effect.Move(this@OutgoingListening) // mutable state update.
+          Effect.Move(
+              copy(
+                  pendingRequested = pendingRequested.removeAt(pendingRequested.lastIndex),
+                  requested = requested.add(request),
+              ))
         }
       }
 
@@ -113,8 +129,10 @@ private data class OutgoingListening<T, C>(
         when (val msg = v.valueOrNull) {
           null -> Effect.Terminate
           is Inc.Advertisement -> {
-            pendingAcks.add(msg.site)
-            Effect.Move(this@OutgoingListening) // mutable state update.
+            Effect.Move(
+                copy(
+                    pendingAcks = pendingAcks.add(msg.site),
+                ))
           }
           is Inc.Event -> {
             set(msg.seqno, msg.site, msg.body)

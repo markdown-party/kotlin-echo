@@ -12,7 +12,7 @@ kotlin {
 
   js { browser() }
 
-  targets.all { compilations.all { kotlinOptions.allWarningsAsErrors = true } }
+  //targets.all { compilations.all { kotlinOptions.allWarningsAsErrors = true } }
 
   sourceSets {
     val commonMain by getting {

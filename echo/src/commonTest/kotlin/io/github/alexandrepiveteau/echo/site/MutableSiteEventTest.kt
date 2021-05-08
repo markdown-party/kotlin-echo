@@ -1,5 +1,8 @@
+@file:OptIn(EchoSyncPreview::class)
+
 package io.github.alexandrepiveteau.echo.site
 
+import io.github.alexandrepiveteau.echo.EchoSyncPreview
 import io.github.alexandrepiveteau.echo.causal.EventIdentifier
 import io.github.alexandrepiveteau.echo.causal.SequenceNumber
 import io.github.alexandrepiveteau.echo.causal.SiteIdentifier
@@ -7,9 +10,9 @@ import io.github.alexandrepiveteau.echo.causal.SiteIdentifier.Companion.random
 import io.github.alexandrepiveteau.echo.mutableSite
 import io.github.alexandrepiveteau.echo.suspendTest
 import io.github.alexandrepiveteau.echo.sync
+import io.github.alexandrepiveteau.echo.sync.SyncStrategy.Once
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlinx.coroutines.withTimeoutOrNull
 
 class MutableSiteEventTest {
 
@@ -52,11 +55,10 @@ class MutableSiteEventTest {
 
   @Test
   fun sequential_yields_areOrdered() = suspendTest {
-    val alice = mutableSite<Int>(random())
-    val bob = mutableSite<Int>(random())
+    val alice = mutableSite<Int>(random(), strategy = Once)
+    val bob = mutableSite<Int>(random(), strategy = Once)
     alice.event { assertEquals(SequenceNumber(0u), yield(123).seqno) }
-    // TODO : Use one-shot sync when supported.
-    withTimeoutOrNull(100) { sync(alice, bob) }
+    sync(alice, bob)
     bob.event { assertEquals(SequenceNumber(1u), yield(123).seqno) }
   }
 }

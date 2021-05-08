@@ -1,12 +1,9 @@
 package io.github.alexandrepiveteau.echo.internal.history
 
-import io.github.alexandrepiveteau.echo.EchoEventLogPreview
-import io.github.alexandrepiveteau.echo.MutableSite
-import io.github.alexandrepiveteau.echo.Site
+import io.github.alexandrepiveteau.echo.*
 import io.github.alexandrepiveteau.echo.causal.EventIdentifier
 import io.github.alexandrepiveteau.echo.causal.SequenceNumber
 import io.github.alexandrepiveteau.echo.causal.SiteIdentifier
-import io.github.alexandrepiveteau.echo.channelLink
 import io.github.alexandrepiveteau.echo.events.EventScope
 import io.github.alexandrepiveteau.echo.internal.flow.map
 import io.github.alexandrepiveteau.echo.logs.EventLog
@@ -15,6 +12,7 @@ import io.github.alexandrepiveteau.echo.protocol.fsm.Effect
 import io.github.alexandrepiveteau.echo.protocol.fsm.IncomingState
 import io.github.alexandrepiveteau.echo.protocol.fsm.OutgoingState
 import io.github.alexandrepiveteau.echo.protocol.fsm.State
+import io.github.alexandrepiveteau.echo.sync.SyncStrategy
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.produceIn
@@ -42,12 +40,17 @@ internal typealias PersistentLogHistory<T, M, C> =
 /**
  * An implementation of [Site] that wraps a [PersistentLogHistory].
  *
+ * @param initial the base case of the model.
+ * @param strategy the [SyncStrategy] to use for this [Site].
+ *
  * @param T the type of the events.
  * @param M the type of the model.
  * @param C the type of the changes.
  */
+@EchoSyncPreview
 internal open class PersistentHistorySite<T, M, C>(
     initial: PersistentLogHistory<T, M, C>,
+    private val strategy: SyncStrategy,
 ) : Site<T, M> {
 
   /** The current value of in the [PersistentHistory]. */
@@ -117,21 +120,27 @@ internal open class PersistentHistorySite<T, M, C>(
   // The current model value flow.
   override val value: StateFlow<M> = current.map { it.current.model }
 
-  override fun outgoing() = exchange(OutgoingState())
-  override fun incoming() = exchange(IncomingState(current.value.current.log.sites))
+  override fun outgoing() = exchange(OutgoingState(strategy))
+  override fun incoming() = exchange(IncomingState(strategy))
 }
 
 /**
  * An implementation of [MutableSite] that wraps a [PersistentLogHistory].
  *
+ * @param identifier the [SiteIdentifier] used to yield events.
+ * @param initial the base case of the model.
+ * @param strategy the [SyncStrategy] to use for this [Site].
+ *
  * @param T the type of the events.
  * @param M the type of the model.
  * @param C the type of the changes.
  */
+@EchoSyncPreview
 internal open class PersistentHistoryMutableSite<T, M, C>(
     override val identifier: SiteIdentifier,
     initial: PersistentLogHistory<T, M, C>,
-) : PersistentHistorySite<T, M, C>(initial), MutableSite<T, M> {
+    strategy: SyncStrategy,
+) : PersistentHistorySite<T, M, C>(initial, strategy), MutableSite<T, M> {
 
   @OptIn(EchoEventLogPreview::class)
   override suspend fun event(

@@ -1,16 +1,19 @@
+@file:OptIn(EchoSyncPreview::class)
+
 package io.github.alexandrepiveteau.echo.demo.counter
 
-import io.github.alexandrepiveteau.echo.demo.Site
+import io.github.alexandrepiveteau.echo.EchoSyncPreview
+import io.github.alexandrepiveteau.echo.causal.SiteIdentifier
 import io.github.alexandrepiveteau.echo.demo.counter.PNCounterEvent.Decrement
 import io.github.alexandrepiveteau.echo.demo.counter.PNCounterEvent.Increment
 import io.github.alexandrepiveteau.echo.logs.EventLog.IndexedEvent
+import io.github.alexandrepiveteau.echo.mutableSite
 import io.github.alexandrepiveteau.echo.projections.OneWayProjection
 import io.github.alexandrepiveteau.echo.suspendTest
 import io.github.alexandrepiveteau.echo.sync
+import io.github.alexandrepiveteau.echo.sync.SyncStrategy.Once
 import kotlin.test.Test
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withTimeout
 
 private sealed class PNCounterEvent {
   object Increment : PNCounterEvent() {
@@ -33,7 +36,20 @@ class PNCounterTest {
 
   @Test
   fun twoSitesCanCreateASharedCounter_andSync(): Unit = suspendTest {
-    val (alice, bob) = Site.createMemoryEchos(0, PNProjection)
+    val alice =
+        mutableSite(
+            identifier = SiteIdentifier(0),
+            initial = 0,
+            strategy = Once,
+            projection = PNProjection,
+        )
+    val bob =
+        mutableSite(
+            identifier = SiteIdentifier(1),
+            initial = 0,
+            strategy = Once,
+            projection = PNProjection,
+        )
 
     alice.event {
       yield(Decrement)
@@ -48,9 +64,7 @@ class PNCounterTest {
 
     // Sync both sites (with a timeout, since by default they'll keep the connection open until
     // either side cancels).
-    try {
-      withTimeout(timeMillis = 1000) { sync(alice, bob) }
-    } catch (expect: TimeoutCancellationException) {}
+    sync(alice, bob)
 
     // Finally, look at the resulting set of both sites, and make sure they eventually reach the
     // right result.

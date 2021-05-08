@@ -16,3 +16,14 @@ import kotlin.RequiresOptIn.Level.ERROR
 )
 @MustBeDocumented
 annotation class EchoEventLogPreview
+
+/**
+ * Annotation for experimental sync APIs, which may change drastically as the replication protocol
+ * gains more capabilities.
+ */
+@RequiresOptIn(
+    level = ERROR,
+    message = "This sync API is experimental and its design may change in the future.",
+)
+@MustBeDocumented
+annotation class EchoSyncPreview

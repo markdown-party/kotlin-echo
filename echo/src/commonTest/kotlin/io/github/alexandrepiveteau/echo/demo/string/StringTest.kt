@@ -1,5 +1,8 @@
+@file:OptIn(EchoSyncPreview::class)
+
 package io.github.alexandrepiveteau.echo.demo.string
 
+import io.github.alexandrepiveteau.echo.EchoSyncPreview
 import io.github.alexandrepiveteau.echo.causal.EventIdentifier
 import io.github.alexandrepiveteau.echo.causal.SiteIdentifier
 import io.github.alexandrepiveteau.echo.demo.string.StringOperation.InsertAfter
@@ -7,13 +10,12 @@ import io.github.alexandrepiveteau.echo.events.EventScope
 import io.github.alexandrepiveteau.echo.mutableSite
 import io.github.alexandrepiveteau.echo.suspendTest
 import io.github.alexandrepiveteau.echo.sync
+import io.github.alexandrepiveteau.echo.sync.SyncStrategy
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.withTimeoutOrNull
 
 class StringTest {
 
@@ -91,12 +93,14 @@ class StringTest {
         mutableSite(
             identifier = SiteIdentifier(0),
             initial = emptyList(),
+            strategy = SyncStrategy.Once,
             projection = StringProjection(),
         )
     val bob =
         mutableSite(
             identifier = SiteIdentifier(1),
             initial = emptyList(),
+            strategy = SyncStrategy.Once,
             projection = StringProjection(),
         )
 
@@ -104,21 +108,16 @@ class StringTest {
 
     alice.event { appendStart(message) }
 
-      println(alice.value.first().asString())
-
-    withTimeoutOrNull(1000) { sync(alice, bob) }
-
-      println(alice.value.first().asString())
-      println(bob.value.first().asString())
+    sync(alice, bob)
 
     alice.event { model -> appendEnd(model, " Hurray !") }
     bob.event { model -> deleteRange(model, 6, 6 + "world".length) }
 
-    withTimeoutOrNull(1000) { sync(alice, bob) }
+    sync(alice, bob)
 
     val expected = "Hello , this is a test ! Hurray !"
 
-    bob.value.map { it.asString() }.onEach { println(it) }.first { it == expected }
-    alice.value.map { it.asString() }.onEach { println(it) }.first { it == expected }
+    bob.value.map { it.asString() }.first { it == expected }
+    alice.value.map { it.asString() }.first { it == expected }
   }
 }

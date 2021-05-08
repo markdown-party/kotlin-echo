@@ -1,17 +1,18 @@
+@file:OptIn(EchoSyncPreview::class)
+
 package io.github.alexandrepiveteau.echo.demo.set
 
+import io.github.alexandrepiveteau.echo.EchoSyncPreview
 import io.github.alexandrepiveteau.echo.causal.SiteIdentifier
-import io.github.alexandrepiveteau.echo.logs.EventLog
 import io.github.alexandrepiveteau.echo.logs.EventLog.IndexedEvent
 import io.github.alexandrepiveteau.echo.mutableSite
 import io.github.alexandrepiveteau.echo.projections.OneWayProjection
 import io.github.alexandrepiveteau.echo.suspendTest
 import io.github.alexandrepiveteau.echo.sync
-import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withTimeout
+import io.github.alexandrepiveteau.echo.sync.SyncStrategy
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlinx.coroutines.flow.first
 
 private sealed class GSetEvent<out T> {
   data class Add<out T>(val item: T) : GSetEvent<T>()
@@ -55,6 +56,7 @@ class GSetTest {
         mutableSite(
             identifier = alice,
             initial = emptySet<Int>(),
+            strategy = SyncStrategy.Once,
             projection = gSetProjection(),
         )
 
@@ -64,6 +66,7 @@ class GSetTest {
         mutableSite(
             identifier = bob,
             initial = emptySet<Int>(),
+            strategy = SyncStrategy.Once,
             projection = gSetProjection(),
         )
 
@@ -87,11 +90,8 @@ class GSetTest {
     assertEquals(setOf(1, 2), aliceBeforeSync)
     assertEquals(setOf(2, 3, 4), bobBeforeSync)
 
-    // Sync both sites (with a timeout, since by default they'll keep the connection open until
-    // either side cancels).
-    try {
-      withTimeout(timeMillis = 1000) { sync(aliceEcho, bobEcho) }
-    } catch (expect: TimeoutCancellationException) {}
+    // Sync both sites.
+    sync(aliceEcho, bobEcho)
 
     // Finally, look at the resulting set of both sites.
     val aliceAfterSync = aliceEcho.value.first { it.size == 4 }
